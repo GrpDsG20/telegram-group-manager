@@ -1,0 +1,12 @@
+credentials:
+  telegram:
+    api_id: 00000000  # ID de la API de Telegram, lo obtienes desde https://my.telegram.org/apps
+    api_hash: "a0000000000000000000"  # Hash secreto asociado al API ID https://my.telegram.org/apps
+    phone_number: "+19000000000"  # Número de teléfono vinculado a tu cuenta de Telegram
+
+settings:
+  group_source: "@grupoorigen"  # Grupo del cual se extraerán los miembros 
+  group_target: "-1000000000"  # Grupo donde se enviarán los miembros (puedes usar el ID completo con el prefijo -100)
+  message_limit: 200  
+  delay_seconds: 2  
+  excluded_users: []  # Lista de usuarios que no quieres copiar 
