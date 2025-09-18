@@ -1,91 +1,139 @@
-import asyncio
-from utils.config_loader import load_config
-from utils.telegram_manager import TelegramManager
+import csv
+import time
+import random
+import traceback
+import tkinter as tk
+from tkinter import filedialog, simpledialog, messagebox
+from telethon.sync import TelegramClient
+from telethon.tl.functions.channels import InviteToChannelRequest
+from telethon.errors.rpcerrorlist import PeerFloodError, UserPrivacyRestrictedError
+from telethon.errors import SessionPasswordNeededError
+from telethon.tl.types import InputPeerUser   # ✅ IMPORTANTE
 
-async def main():
-    print("🔄 Iniciando proceso de transferencia de usuarios...")
-    
+from config import accounts, DELAY_BETWEEN_ADDS
+
+# ============ LOGIN DE CUENTAS ===============
+clients = []
+for acc in accounts:
+    client = TelegramClient(acc["phone"], acc["api_id"], acc["api_hash"])
+    client.connect()
+    if not client.is_user_authorized():
+        try:
+            client.send_code_request(acc["phone"])
+            code = input(f"Ingrese el código de 5 dígitos enviado a {acc['phone']}: ")
+            client.sign_in(acc["phone"], code)
+
+            # Si la cuenta tiene 2FA
+            if not client.is_user_authorized():
+                try:
+                    pwd = input(f"🔐 La cuenta {acc['phone']} tiene VERIFICACIÓN EN DOS PASOS.\nIngrese la contraseña 2FA: ")
+                    client.sign_in(password=pwd)
+                except Exception as e:
+                    print(f"No se pudo iniciar sesión en {acc['phone']} con 2FA: {e}")
+                    continue
+
+        except SessionPasswordNeededError:
+            pwd = input(f"🔐 La cuenta {acc['phone']} tiene VERIFICACIÓN EN DOS PASOS.\nIngrese la contraseña 2FA: ")
+            client.sign_in(password=pwd)
+        except Exception as e:
+            print(f"No se pudo iniciar sesión en {acc['phone']}: {e}")
+            continue
+
+    clients.append(client)
+
+if not clients:
+    print("❌ Ninguna cuenta se pudo conectar.")
+    exit()
+
+# ============ FUNCIONES PRINCIPALES ============
+def extraer_usuarios():
+    grupos = simpledialog.askstring("Extraer usuarios", 
+                                    "Ingrese los grupos separados por coma (@grupo o -ID):")
+    if not grupos:
+        return
+    grupos = [g.strip() for g in grupos.split(",")]
+
+    all_users = []
+    for grupo in grupos:
+        try:
+            target_group = clients[0].get_entity(grupo)
+            participants = clients[0].get_participants(target_group, aggressive=True)
+            for user in participants:
+                all_users.append([
+                    user.id,
+                    user.username or "",
+                    user.access_hash,
+                    (user.first_name or "") + " " + (user.last_name or "")
+                ])
+            print(f"✔ Extraídos {len(participants)} usuarios de {grupo}")
+        except Exception as e:
+            print(f"Error al extraer de {grupo}: {e}")
+            traceback.print_exc()
+
+    if all_users:
+        with open("members.csv", "w", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            writer.writerow(["id", "username", "access_hash", "name"])
+            writer.writerows(all_users)
+        messagebox.showinfo("Éxito", f"Usuarios guardados en members.csv ({len(all_users)} usuarios).")
+
+def importar_usuarios():
+    grupo_destino = simpledialog.askstring("Importar usuarios", 
+                                           "Ingrese el @usuario o -ID del grupo destino:")
+    if not grupo_destino:
+        return
+
+    csv_file = filedialog.askopenfilename(title="Seleccionar CSV", filetypes=[("CSV files", "*.csv")])
+    if not csv_file:
+        return
+
     try:
-        # Cargar configuración
-        print("\n📁 Cargando configuración...")
-        config = load_config()
-        creds = config['credentials']['telegram']
-        settings = config['settings']
-        print("✅ Configuración cargada correctamente")
-
-        # Validar credenciales
-        required_creds = ['api_id', 'api_hash', 'phone_number']
-        if missing := [k for k in required_creds if not creds.get(k)]:
-            raise ValueError(f"Faltan credenciales: {', '.join(missing)}")
-
-        # Inicializar manager
-        print("\n🔑 Autenticando en Telegram...")
-        manager = TelegramManager(
-            api_id=creds['api_id'],
-            api_hash=creds['api_hash'],
-            phone=creds['phone_number']
-        )
-
-        if not await manager.start():
-            raise ConnectionError("No se pudo autenticar")
-
-        # Obtener grupos
-        print("\n🔍 Localizando grupos...")
-        source = await manager.get_entity(settings['group_source'])
-        if not source:
-            raise ValueError(f"Grupo origen no encontrado: {settings['group_source']}")
-        print(f"✅ Grupo origen: {source.title}")
-
-        target = await manager.get_entity(settings['group_target'])
-        if not target:
-            raise ValueError(f"Grupo destino no encontrado: {settings['group_target']}")
-        
-        target_type = await manager.check_group_type(target)
-        print(f"✅ Grupo destino: {target.title} (Tipo: {target_type})")
-
-        # Obtener usuarios activos
-        print(f"\n🔎 Analizando últimos {settings['message_limit']} mensajes...")
-        participants = await manager.get_active_users(source, settings['message_limit'])
-        
-        if not participants:
-            print("⚠️ No se encontraron usuarios activos")
-            print("ℹ️ Prueba aumentar 'message_limit' o verificar permisos")
-            return
-
-        # Filtrar usuarios
-        print("\n🧹 Filtrando usuarios...")
-        users_to_add = [
-            p for p in participants
-            if not p.bot and (p.username or str(p.id)) not in settings.get('excluded_users', [])
-        ]
-        print(f"👤 Usuarios válidos encontrados: {len(users_to_add)}")
-
-        # Procesar añadidos
-        print(f"\n🚀 Comenzando transferencia (delay: {settings.get('delay_seconds', 2)}s)...")
-        added = 0
-        for i, user in enumerate(users_to_add, 1):
-            username = f"@{user.username}" if user.username else f"ID:{user.id}"
-            print(f"\n[{i}/{len(users_to_add)}] Procesando: {username}")
-            
-            if await manager.safe_add_user(target, user, settings.get('delay_seconds', 2)):
-                added += 1
-
-        # Resultados
-        print(f"\n🎉 Resultado final:")
-        print(f"✅ Usuarios añadidos: {added}")
-        print(f"❌ No añadidos: {len(users_to_add) - added}")
-
+        target_group = clients[0].get_entity(grupo_destino)
     except Exception as e:
-        print(f"\n❌ Error crítico: {type(e).__name__}")
-        print(f"📄 Detalles: {str(e)}")
-        print("\n💡 Soluciones posibles:")
-        print("- Verifica los IDs/nombres de los grupos")
-        print("- Asegúrate de tener permisos de administrador")
-        print("- Reduce 'message_limit' o aumenta 'delay_seconds'")
-    finally:
-        if 'manager' in locals():
-            await manager.disconnect()
-        print("\n🏁 Proceso completado")
+        messagebox.showerror("Error", f"No se pudo acceder al grupo destino: {e}")
+        return
 
-if __name__ == "__main__":
-    asyncio.run(main())
+    with open(csv_file, "r", encoding="utf-8") as f:
+        users = list(csv.reader(f))[1:]  # saltar header
+
+    added = 0
+    client_index = 0  # empieza en la primera cuenta
+
+    for user in users:
+        try:
+            user_id = int(user[0])
+            access_hash = int(user[2])
+            entity = InputPeerUser(user_id=user_id, access_hash=access_hash)
+
+            # usar la cuenta actual
+            clients[client_index](InviteToChannelRequest(target_group, [entity]))
+            print(f"✔ Usuario {user[3]} ({user[1]}) agregado con cuenta {accounts[client_index]['phone']}")
+            added += 1
+
+ 
+
+        except PeerFloodError:
+            print(f"⚠ Flood detectado en {accounts[client_index]['phone']}, cambiando de cuenta...")
+            client_index = (client_index + 1) % len(clients)  # rota a la siguiente cuenta
+            if client_index == 0:
+                print("⚠ Todas las cuentas alcanzaron el límite de invitaciones.")
+                break
+        except UserPrivacyRestrictedError:
+            print(f"⚠ Usuario {user[3]} ({user[1]}) con privacidad, omitido.")
+        except Exception as e:
+            print(f"Error con {user[3]} ({user[1]}): {e}")
+
+    messagebox.showinfo("Importación finalizada", f"Se intentó agregar {added} usuarios.")
+
+# ============ INTERFAZ GRAFICA ============
+root = tk.Tk()
+root.title("Telegram Scraper & Adder")
+root.geometry("400x200")
+
+btn1 = tk.Button(root, text="📥 Extraer usuarios", command=extraer_usuarios, width=30, height=2)
+btn1.pack(pady=20)
+
+btn2 = tk.Button(root, text="📤 Importar usuarios", command=importar_usuarios, width=30, height=2)
+btn2.pack(pady=20)
+
+root.mainloop()
