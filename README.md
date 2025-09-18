@@ -10,24 +10,20 @@ Es importante tener instalado y configurado Telegram Desktop.
 1. Ejecuta el script con el siguiente comando:
    python main.py
 
-2. Se solicitará el código de verificación de Telegram.
-   - Este código llegará al número configurado en el archivo config.yaml.
-   - Ingresa el código cuando se te pida.
+2. Se solicitará el código de verificación Y MFA de Telegram si lo tiene.
+   - Sigue las instrucciones de la consola.
 
-3. El script comenzará a ejecutarse automáticamente:
-   - Extraerá los miembros del grupo origen (group_source).
-   - Intentará agregarlos al grupo destino (group_target).
+3. El script comenzará a ejecutarse (INTERFAZ):
+   - Extraerá los miembros del grupo origen.
+   - Agregara el csv al grupo destino.
 
 4. Requisitos importantes:
-   - Debes ser administrador en ambos grupos (origen y destino).
-   - También funcionará si el grupo origen es público
+   - Debes ser administrador en el grupo destino y mienbro en el grupo origen.
+   - puedes agregar mas de 1 numero, para no saturar las apis
+   - Funcionara sin problema si minimo uno de los numeros es mienbro del grupo origen
 
 5. Consideraciones:
    - Solo se pueden añadir usuarios que permitan ser agregados por otros.
-   - Telegram impone límites diarios y podría restringir la cuenta por actividad sospechosa.
+   - Telegram impone límites diarios, por eso es recomendable usar varios numeros para ir intercalando.
 
-6. Para evitar bloqueos:
-   - El script usa un sistema de delay progresivo.
-   - A medida que se agregan usuarios, el tiempo de espera entre cada uno aumenta automáticamente.
 
-![Image](https://github.com/user-attachments/assets/457c9498-8b05-4d6e-9fe6-58b39533cf52)
