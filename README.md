@@ -26,4 +26,4 @@ Es importante tener instalado y configurado Telegram Desktop.
    - Solo se pueden añadir usuarios que permitan ser agregados por otros.
    - Telegram impone límites diarios, por eso es recomendable usar varios numeros para ir intercalando.
 
-
+<img width="604" height="408" alt="Image" src="https://github.com/user-attachments/assets/139f9a2b-4fc9-420a-8fa0-417f03bed33e" />
